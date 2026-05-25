@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MediSimple</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0e0e11;
+    --surface: #18181d;
+    --surface2: #22222a;
+    --border: #2a2a35;
+    --accent: #d946a8;
+    --accent2: #7c3aed;
+    --text: #f0f0f4;
+    --text2: #8b8b9e;
+    --text3: #555568;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --sidebar-w: 260px;
+    --radius: 14px;
+  }
+  .light {
+    --bg: #f5f5f7;
+    --surface: #ffffff;
+    --surface2: #ebebef;
+    --border: #dcdce8;
+    --text: #111118;
+    --text2: #555568;
+    --text3: #9999aa;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Sora', sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; }
+
+  /* SIDEBAR */
+  #sidebar {
+    width: var(--sidebar-w);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    transition: width 0.3s ease, opacity 0.3s ease;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  #sidebar.collapsed { width: 0; opacity: 0; }
+  .sidebar-inner { width: var(--sidebar-w); display: flex; flex-direction: column; height: 100%; }
+
+  .sidebar-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { display: flex; align-items: center; gap: 9px; }
+  .logo-icon {
+    width: 32px; height: 32px; border-radius: 9px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+  }
+  .logo-text { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
+  .logo-text span { color: var(--accent); }
+  .toggle-btn {
+    background: none; border: none; color: var(--text2); cursor: pointer;
+    padding: 6px; border-radius: 8px; display: flex; align-items: center;
+    transition: background 0.2s, color 0.2s;
+  }
+  .toggle-btn:hover { background: var(--surface2); color: var(--text); }
+
+  .new-chat-btn {
+    margin: 14px 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: white; border: none; border-radius: 10px;
+    padding: 10px 14px; font-family: 'Sora', sans-serif;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    transition: opacity 0.2s, transform 0.1s;
+    white-space: nowrap;
+  }
+  .new-chat-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+  .chat-list-label { padding: 0 14px 8px; font-size: 11px; font-weight: 600; color: var(--text3); letter-spacing: 0.8px; text-transform: uppercase; white-space: nowrap; }
+  .chat-list { flex: 1; overflow-y: auto; padding: 0 8px; }
+  .chat-item {
+    padding: 9px 10px; border-radius: 8px; font-size: 13px; color: var(--text2);
+    cursor: pointer; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: background 0.15s, color 0.15s;
+  }
+  .chat-item:hover, .chat-item.active { background: var(--surface2); color: var(--text); }
+
+  .sidebar-bottom { padding: 12px 8px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
+  .mode-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 10px; border-radius: 8px; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .mode-row:hover { background: var(--surface2); }
+  .mode-label { font-size: 13px; color: var(--text2); white-space: nowrap; }
+  .toggle-switch {
+    width: 36px; height: 20px; background: var(--border);
+    border-radius: 20px; position: relative; cursor: pointer;
+    transition: background 0.2s flex-shrink: 0;
+  }
+  .toggle-switch.on { background: var(--accent); }
+  .toggle-switch::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 14px; height: 14px; border-radius: 50%; background: white;
+    transition: transform 0.2s;
+  }
+  .toggle-switch.on::after { transform: translateX(16px); }
+  .disclaimer-btn {
+    padding: 9px 10px; border-radius: 8px; font-size: 13px; color: var(--text2);
+    cursor: pointer; transition: background 0.15s, color 0.15s; white-space: nowrap;
+  }
+  .disclaimer-btn:hover { background: var(--surface2); color: var(--text); }
+
+  /* MAIN */
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+  /* TOP BAR when sidebar collapsed */
+  .topbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .topbar-logo { display: flex; align-items: center; gap: 8px; }
+  .topbar-right { margin-left: auto; display: flex; gap: 8px; }
+  #dashboard-float-btn {
+    display: none;
+    align-items: center; gap: 7px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: white; border: none; border-radius: 9px;
+    padding: 8px 14px; font-family: 'Sora', sans-serif;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  #dashboard-float-btn:hover { opacity: 0.85; }
+  #dashboard-float-btn.visible { display: flex; }
+
+  /* CHAT AREA */
+  #chat-area {
+    flex: 1; overflow-y: auto; padding: 32px 20px 16px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  #chat-area::-webkit-scrollbar { width: 4px; }
+  #chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* WELCOME */
+  #welcome {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; flex: 1; text-align: center;
+    animation: fadeUp 0.5s ease;
+  }
+  .welcome-icon {
+    width: 64px; height: 64px; border-radius: 20px; margin-bottom: 20px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center; font-size: 28px;
+  }
+  .welcome-title { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; }
+  .welcome-sub { font-size: 14px; color: var(--text2); max-width: 380px; line-height: 1.6; }
+
+  /* MESSAGES */
+  .msg { display: flex; gap: 10px; animation: fadeUp 0.3s ease; max-width: 700px; }
+  .msg.user { flex-direction: row-reverse; align-self: flex-end; }
+  .msg-avatar {
+    width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; margin-top: 2px;
+  }
+  .msg-avatar.bot { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+  .msg-avatar.user { background: var(--surface2); }
+  .msg-bubble {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 12px 16px;
+    font-size: 14px; line-height: 1.65; max-width: 580px;
+    white-space: pre-wrap; /* For line breaks in AI response */
+  }
+  .msg.user .msg-bubble { background: var(--accent2); border-color: var(--accent2); color: white; }
+
+  /* PDF CHIP in bubble */
+  .pdf-chip-inline {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 11px; margin-bottom: 8px;
+    font-size: 12px; color: var(--text2);
+  }
+  .pdf-chip-inline .pdf-icon { font-size: 16px; }
+
+  /* PROCESSING */
+  .processing-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px 16px;
+  }
+  .proc-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .proc-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    animation: pulse 1.2s infinite;
+  }
+  .proc-label { font-size: 13px; font-weight: 600; color: var(--text); }
+  .proc-step { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; color: var(--text2); }
+
+  /* VIEW DASHBOARD BUTTON */
+  .view-dash-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: white; border: none; border-radius: 10px;
+    padding: 11px 18px; font-family: 'Sora', sans-serif;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    margin-top: 10px; transition: opacity 0.2s, transform 0.1s;
+  }
+  .view-dash-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+
+  /* INPUT AREA */
+  #input-area {
+    padding: 12px 20px 20px;
+    border-top: 1px solid var(--border);
+  }
+  .input-wrapper {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    overflow: hidden;
+  }
+  .input-wrapper:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(217,70,168,0.12);
+  }
+
+  /* PDF previews inside input */
+  #pdf-previews {
+    display: none; padding: 10px 12px 0;
+    flex-wrap: wrap; gap: 8px;
+  }
+  #pdf-previews.has-files { display: flex; }
+  .pdf-preview-chip {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px 6px 8px;
+    font-size: 12px; color: var(--text2);
+    position: relative;
+  }
+  .pdf-preview-chip .remove-pdf {
+    width: 16px; height: 16px; border-radius: 50%; background: var(--text3);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0; color: white; font-size: 9px;
+    transition: background 0.15s;
+  }
+  .pdf-preview-chip .remove-pdf:hover { background: var(--red); }
+
+  .input-row { display: flex; align-items: center; padding: 10px 12px; gap: 8px; }
+  .add-pdf-btn {
+    width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--border);
+    background: none; color: var(--text2); cursor: pointer; font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: background 0.2s, color 0.2s;
+  }
+  .add-pdf-btn:hover { background: var(--surface2); color: var(--text); }
+  #chat-input {
+    flex: 1; background: none; border: none; outline: none;
+    font-family: 'Sora', sans-serif; font-size: 14px; color: var(--text);
+    resize: none; line-height: 1.5; max-height: 120px;
+    overflow-y: auto;
+  }
+  #chat-input::placeholder { color: var(--text3); }
+  .send-btn {
+    width: 34px; height: 34px; border-radius: 9px; border: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: white; cursor: pointer; font-size: 14px;
+    display: none; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: opacity 0.2s;
+  }
+  .send-btn.visible { display: flex; }
+  .send-btn:hover { opacity: 0.85; }
+
+  /* DASHBOARD OVERLAY */
+  #dashboard-overlay {
+    display: none;
+    position: absolute; inset: 0;
+    background: var(--bg);
+    overflow-y: auto;
+    z-index: 100;
+    animation: fadeIn 0.3s ease;
+    padding: 28px 32px 40px;
+  }
+  #dashboard-overlay.open { display: block; }
+  .dash-topbar { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; }
+  .dash-title { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+  .dash-meta { font-size: 13px; color: var(--text2); margin-top: 4px; }
+  .close-dash {
+    width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text2); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+    transition: background 0.2s, color 0.2s;
+  }
+  .close-dash:hover { background: var(--surface2); color: var(--text); }
+
+  .dash-grid { display: grid; grid-template-columns: 1fr 200px 200px; gap: 16px; margin-bottom: 20px; }
+  .dash-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 20px;
+  }
+  .dash-card-label { font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text3); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+  .dash-key-finding { font-size: 14px; line-height: 1.7; color: var(--text2); }
+  .risk-badge {
+    display: inline-flex; padding: 7px 16px; border-radius: 8px;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.5px;
+  }
+  .risk-moderate { background: rgba(245,158,11,0.15); color: var(--yellow); border: 1px solid rgba(245,158,11,0.3); }
+  .risk-high { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+  .risk-low { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+
+  .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .results-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .results-header { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+  .dot-red { width: 12px; height: 12px; border-radius: 50%; background: var(--red); }
+  .dot-green { width: 12px; height: 12px; border-radius: 50%; background: var(--green); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 0 0 10px; color: var(--text3); font-weight: 600; font-size: 12px; letter-spacing: 0.4px; border-bottom: 1px solid var(--border); }
+  td { padding: 11px 0; border-bottom: 1px solid var(--border); color: var(--text2); }
+  td:first-child { font-weight: 600; color: var(--text); }
+  .high { color: var(--red); font-weight: 700; }
+  .low { color: var(--yellow); font-weight: 700; }
+  .normal { color: var(--green); font-weight: 700; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  input[type="file"] { display: none; }
+
+  /* Disclaimer modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6); z-index: 200;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 18px; padding: 28px; max-width: 440px; width: 90%;
+    animation: fadeUp 0.3s ease;
+  }
+  .modal h3 { font-size: 17px; font-weight: 700; margin-bottom: 12px; }
+  .modal p { font-size: 13px; color: var(--text2); line-height: 1.7; }
+  .modal-close { margin-top: 18px; background: var(--surface2); border: none; border-radius: 9px; padding: 9px 18px; color: var(--text); font-family: 'Sora', sans-serif; font-size: 13px; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div class="sidebar-inner">
+    <div class="sidebar-top">
+      <div class="logo">
+        <div class="logo-icon">🩺</div>
+        <div class="logo-text">Medi<span>Simple</span></div>
+      </div>
+      <button class="toggle-btn" onclick="toggleSidebar()" title="Close sidebar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
+    </div>
+
+    <button class="new-chat-btn" onclick="newChat()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+      New Chat
+    </button>
+
+    <div class="chat-list-label">Your Chats</div>
+    <div class="chat-list">
+      <div class="chat-item active">🩸 Current Session</div>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="mode-row" onclick="toggleTheme()">
+        <span class="mode-label">☀️ Light Mode</span>
+        <div class="toggle-switch" id="theme-toggle"></div>
+      </div>
+      <div class="disclaimer-btn" onclick="document.getElementById('disclaimer-modal').classList.add('open')">
+        ⚠️ Medical Disclaimer
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="main">
+  <div class="topbar">
+    <button class="toggle-btn" id="open-btn" onclick="toggleSidebar()" style="display:none" title="Open sidebar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+    </button>
+    <div class="topbar-logo" id="topbar-logo" style="display:none">
+      <div class="logo-icon" style="width:28px;height:28px;border-radius:8px;font-size:13px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--accent),var(--accent2))">🩺</div>
+      <span style="font-weight:700;font-size:14px;">Medi<span style="color:var(--accent)">Simple</span></span>
+    </div>
+    <div class="topbar-right">
+      <button id="dashboard-float-btn" onclick="openDashboard()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        View Dashboard
+      </button>
+    </div>
+  </div>
+
+  <div id="chat-area">
+    <div id="welcome">
+      <div class="welcome-icon">🩺</div>
+      <div class="welcome-title">Analyse Your Medical Report</div>
+      <div class="welcome-sub">Upload your PDF reports and get an AI-powered analysis. Understand your results in plain language.</div>
+    </div>
+  </div>
+
+  <div id="input-area">
+    <div class="input-wrapper">
+      <div id="pdf-previews"></div>
+      <div class="input-row">
+        <button class="add-pdf-btn" onclick="document.getElementById('pdf-file-input').click()" title="Add PDF">+</button>
+        <input type="file" id="pdf-file-input" accept=".pdf" multiple onchange="handlePdfAdd(this)"/>
+        <textarea id="chat-input" rows="1" placeholder="Ask anything about your report…" oninput="handleInput(this)" onkeydown="handleKey(event)"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendMessage()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dashboard-overlay">
+    <div class="dash-topbar">
+      <div>
+        <div class="dash-title">AI Clinical Analysis</div>
+        <div class="dash-meta">Patient: ... &nbsp;|&nbsp; Date: ...</div>
+      </div>
+      <button class="close-dash" onclick="closeDashboard()">✕</button>
+    </div>
+
+    <div class="dash-grid">
+      <div class="dash-card" style="grid-column: span 2;">
+        <div class="dash-card-label">🔍 Key Findings</div>
+        <div class="dash-key-finding">Upload a report to see key findings.</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-label">⚠️ Clinical Risk Level</div>
+        <div class="risk-badge">PENDING</div>
+      </div>
+    </div>
+
+    <div class="results-grid">
+      <div class="results-card">
+        <div class="results-header"><div class="dot-red"></div> Abnormal Results</div>
+        <table>
+          <tr><th>Test</th><th>Result</th><th>Range</th><th>Status</th></tr>
+          </table>
+      </div>
+      <div class="results-card">
+        <div class="results-header"><div class="dot-green"></div> Normal Results</div>
+        <table>
+          <tr><th>Test</th><th>Result</th><th>Range</th></tr>
+          </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="disclaimer-modal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <h3>⚠️ Medical Disclaimer</h3>
+    <p>MediSimple is an AI-powered tool designed to help you understand your medical reports. It is <strong>not a substitute for professional medical advice</strong>, diagnosis, or treatment. Always consult a qualified healthcare provider before making any medical decisions.</p>
+    <button class="modal-close" onclick="document.getElementById('disclaimer-modal').classList.remove('open')">Got it</button>
+  </div>
+</div>
+
+<script>
+  // --- STATE VARIABLES ---
+  const API_BASE_URL = window.location.origin;
+  let sessionId = "session_" + Math.random().toString(36).substring(7);
+  let globalSummaryText = "";
+  let dashboardData = null;
+
+  let pdfs = [];
+  let dashboardReady = false;
+  let sidebarOpen = true;
+  let lightMode = false;
+
+  // --- UI TOGGLES ---
+  function toggleSidebar() {
+    sidebarOpen = !sidebarOpen;
+    document.getElementById('sidebar').classList.toggle('collapsed', !sidebarOpen);
+    document.getElementById('open-btn').style.display = sidebarOpen ? 'none' : 'flex';
+    document.getElementById('topbar-logo').style.display = sidebarOpen ? 'none' : 'flex';
+  }
+
+  function toggleTheme() {
+    lightMode = !lightMode;
+    document.body.classList.toggle('light', lightMode);
+    document.getElementById('theme-toggle').classList.toggle('on', lightMode);
+  }
+
+  function newChat() {
+    // Reset state
+    sessionId = "session_" + Math.random().toString(36).substring(7);
+    globalSummaryText = "";
+    dashboardData = null;
+    pdfs = [];
+    dashboardReady = false;
+
+    // Reset UI
+    document.getElementById('chat-input').value = '';
+    document.getElementById('pdf-previews').innerHTML = '';
+    document.getElementById('pdf-previews').classList.remove('has-files');
+    document.getElementById('send-btn').classList.remove('visible');
+    document.getElementById('dashboard-float-btn').classList.remove('visible');
+    closeDashboard();
+
+    const ca = document.getElementById('chat-area');
+    ca.innerHTML = `<div id="welcome">
+      <div class="welcome-icon">🩺</div>
+      <div class="welcome-title">Analyse Your Medical Report</div>
+      <div class="welcome-sub">Upload your PDF reports and get an AI-powered analysis. Understand your results in plain language.</div>
+    </div>`;
+    document.getElementById('pdf-file-input').value = '';
+  }
+
+  // --- PDF INPUT HANDLING ---
+  function handlePdfAdd(input) {
+    const files = Array.from(input.files);
+    files.forEach(f => {
+      if (!pdfs.find(p => p.name === f.name)) pdfs.push(f);
+    });
+    renderPdfPreviews();
+    updateSendBtn();
+    input.value = '';
+  }
+
+  function renderPdfPreviews() {
+    const container = document.getElementById('pdf-previews');
+    container.innerHTML = '';
+    pdfs.forEach((f, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'pdf-preview-chip';
+      chip.innerHTML = `<span style="font-size:16px">📄</span><span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</span><div class="remove-pdf" onclick="removePdf(${i})">✕</div>`;
+      container.appendChild(chip);
+    });
+    container.classList.toggle('has-files', pdfs.length > 0);
+  }
+
+  function removePdf(i) {
+    pdfs.splice(i, 1);
+    renderPdfPreviews();
+    updateSendBtn();
+  }
+
+  function handleInput(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    updateSendBtn();
+  }
+
+  function updateSendBtn() {
+    const hasText = document.getElementById('chat-input').value.trim().length > 0;
+    const hasPdf = pdfs.length > 0;
+    document.getElementById('send-btn').classList.toggle('visible', hasText || hasPdf);
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  }
+
+  function hideWelcome() {
+    const w = document.getElementById('welcome');
+    if (w) w.remove();
+  }
+
+  // --- POPULATE DASHBOARD ---
+  function populateDashboard(data) {
+    // Top Bar
+    const pName = data.patient_name || "Unknown";
+    const pDate = data.report_date || new Date().toLocaleDateString();
+    document.querySelector('.dash-meta').innerHTML = `Patient: ${pName} &nbsp;|&nbsp; Date: ${pDate}`;
+
+    // Key Findings
+    let findingsHtml = data.key_findings.map(f => `• ${f}`).join('<br/>');
+    if(!findingsHtml) findingsHtml = "No critical findings detected.";
+    document.querySelector('.dash-key-finding').innerHTML = findingsHtml;
+
+    // Risk Badge
+    const riskBadge = document.querySelector('.risk-badge');
+    riskBadge.className = 'risk-badge'; // Reset
+    const risk = (data.risk_level || "UNKNOWN").toUpperCase();
+    if (risk === 'HIGH') riskBadge.classList.add('risk-high');
+    else if (risk === 'MODERATE') riskBadge.classList.add('risk-moderate');
+    else riskBadge.classList.add('risk-low');
+    riskBadge.textContent = risk;
+
+    // Abnormal Table
+    const abTable = document.querySelector('.results-card:nth-child(1) table');
+    let abHtml = `<tr><th>Test</th><th>Result</th><th>Range</th><th>Status</th></tr>`;
+    data.abnormal_results.forEach(r => {
+      const cls = r.status.toLowerCase() === 'high' ? 'high' : 'low';
+      abHtml += `<tr><td>${r.test_name}</td><td class="${cls}">${r.value} ${r.unit}</td><td>${r.reference_range}</td><td class="${cls}">${r.status}</td></tr>`;
+    });
+    abTable.innerHTML = abHtml;
+
+    // Normal Table
+    const normTable = document.querySelector('.results-card:nth-child(2) table');
+    let normHtml = `<tr><th>Test</th><th>Result</th><th>Range</th></tr>`;
+    data.normal_results.forEach(r => {
+      normHtml += `<tr><td>${r.test_name}</td><td class="normal">${r.value} ${r.unit}</td><td>${r.reference_range}</td></tr>`;
+    });
+    normTable.innerHTML = normHtml;
+  }
+
+  // --- SEND MESSAGE (API INTEGRATION) ---
+  async function sendMessage() {
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text && pdfs.length === 0) return;
+
+    hideWelcome();
+    const ca = document.getElementById('chat-area');
+
+    // 1. Render User Message
+    const userDiv = document.createElement('div');
+    userDiv.className = 'msg user';
+    let bubbleContent = '';
+    if (pdfs.length > 0) {
+      pdfs.forEach(f => {
+        bubbleContent += `<div class="pdf-chip-inline"><span class="pdf-icon">📄</span><span>${f.name}</span></div>`;
+      });
+    }
+    if (text) bubbleContent += `<div>${escHtml(text)}</div>`;
+    userDiv.innerHTML = `<div class="msg-avatar user">👤</div><div class="msg-bubble">${bubbleContent}</div>`;
+    ca.appendChild(userDiv);
+
+    // Track state locally before clearing
+    const hasPdfs = pdfs.length > 0;
+    const fileToSend = hasPdfs ? pdfs[0] : null; // Backend handles 1 file at a time
+    const textToSend = text;
+
+    // Clear input area
+    input.value = '';
+    input.style.height = 'auto';
+    pdfs = [];
+    renderPdfPreviews();
+    document.getElementById('send-btn').classList.remove('visible');
+    ca.scrollTop = ca.scrollHeight;
+
+    // 2. SCENARIO A: Uploading a Document
+    if (hasPdfs) {
+      const procDiv = document.createElement('div');
+      procDiv.className = 'msg';
+      procDiv.innerHTML = `<div class="msg-avatar bot">🩺</div>
+        <div class="processing-card" id="proc-card">
+          <div class="proc-header">
+            <div class="proc-dot"></div>
+            <span class="proc-label">Analysing document...</span>
+          </div>
+          <div class="proc-step"><span class="proc-num">01</span> Reading PDF text</div>
+          <div class="proc-step"><span class="proc-num">02</span> Extracting clinical data</div>
+          <div class="proc-step"><span class="proc-num">03</span> Building AI memory</div>
+        </div>`;
+      ca.appendChild(procDiv);
+      ca.scrollTop = ca.scrollHeight;
+
+      try {
+        const formData = new FormData();
+        formData.append('file', fileToSend);
+
+        const response = await fetch(`${API_BASE_URL}/upload`, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) throw new Error("Failed to process document.");
+
+        const result = await response.json();
+
+        // Save data locally
+        dashboardData = result.dashboard_data;
+        globalSummaryText = dashboardData.summary_text;
+
+        // Update Dashboard UI
+        populateDashboard(dashboardData);
+        dashboardReady = true;
+
+        // Finish processing card
+        const card = document.getElementById('proc-card');
+        card.querySelector('.proc-dot').style.background = 'var(--green)';
+        card.querySelector('.proc-dot').style.animation = 'none';
+        card.querySelector('.proc-label').textContent = 'Analysis Complete ✓';
+
+        // Add Bot Summary Message
+        const botDiv = document.createElement('div');
+        botDiv.className = 'msg';
+        botDiv.innerHTML = `<div class="msg-avatar bot">🩺</div>
+          <div class="msg-bubble">
+            <strong>${dashboardData.patient_name || "Patient"} Report Processed.</strong><br/><br/>
+            ${globalSummaryText}<br/><br/>
+            <button class="view-dash-btn" onclick="openDashboard()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              View Dashboard
+            </button>
+          </div>`;
+        ca.appendChild(botDiv);
+        document.getElementById('dashboard-float-btn').classList.add('visible');
+        ca.scrollTop = ca.scrollHeight;
+
+      } catch (err) {
+        procDiv.innerHTML = `<div class="msg-avatar bot">🩺</div><div class="msg-bubble" style="color:var(--red)">Error: ${err.message}</div>`;
+      }
+    }
+
+    // 3. SCENARIO B: Asking a Chat Question
+    if (textToSend) {
+      // If we just uploaded a PDF, we want to wait a split second so the messages flow nicely
+      if (hasPdfs) await new Promise(r => setTimeout(r, 500));
+
+      const chatProcDiv = document.createElement('div');
+      chatProcDiv.className = 'msg';
+      chatProcDiv.innerHTML = `<div class="msg-avatar bot">🩺</div><div class="msg-bubble">Thinking...</div>`;
+      ca.appendChild(chatProcDiv);
+      ca.scrollTop = ca.scrollHeight;
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            message: textToSend,
+            global_summary: globalSummaryText || "No document loaded yet."
+          })
+        });
+
+        if (!response.ok) throw new Error("Failed to get answer.");
+
+        const result = await response.json();
+        chatProcDiv.innerHTML = `<div class="msg-avatar bot">🩺</div><div class="msg-bubble">${escHtml(result.answer)}</div>`;
+
+      } catch (err) {
+        chatProcDiv.innerHTML = `<div class="msg-avatar bot">🩺</div><div class="msg-bubble" style="color:var(--red)">Error: ${err.message}</div>`;
+      }
+      ca.scrollTop = ca.scrollHeight;
+    }
+  }
+
+  function openDashboard() { document.getElementById('dashboard-overlay').classList.add('open'); }
+  function closeDashboard() { document.getElementById('dashboard-overlay').classList.remove('open'); }
+  function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# AI Core
+langchain
+langchain-community
+langchain-core
+langchain-groq
+langchain-huggingface
+faiss-cpu
+
+# Infrastructure & PDF
+fastapi
+uvicorn
+python-multipart
+pydantic-settings
+pymupdf
+python-dotenv==1.2.2
+pydantic
+langchain-text-splitters
