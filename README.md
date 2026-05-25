@@ -1,140 +1,114 @@
-# Text-to-SQL — Natural Language Database Query Engine
+# Medi-Simple — AI-Powered Medical Report Assistant
 
-An LLM-powered system that converts plain-English questions into validated, executed SQL queries with natural language responses. Supports multiple database dialects with built-in safety, retry logic, and ambiguity detection.
+An end-to-end RAG system that turns complex clinical PDFs into an interactive patient-facing Q&A tool with a structured health dashboard.
 
-Ask `"Which customers placed orders worth more than $500 last month?"` → get the SQL, the results, and a human-readable answer.
+Upload a blood report → get a risk-scored dashboard with abnormal flags → ask follow-up questions in plain English.
 
-**Stack:** Python · FastAPI · Groq (Llama 3.3) · PostgreSQL · SQLAlchemy (async) · Streamlit
+**Stack:** Python · FastAPI · LangChain · FAISS · Groq (Llama 3.3 70B) · HuggingFace Embeddings · Pydantic
 
 ---
 
 ## Architecture
 
 ```
-User Question
+PDF Upload
     │
     ▼
 ┌─────────────────────┐
-│  Ambiguity Detector  │  LLM checks if the question is too vague
-│                     │  "show top products" → asks: "top by what?"
-│                     │  Clear questions pass through
+│  PDF Processor       │  PyMuPDF (fitz) — extracts text with page boundaries
 └─────────┬───────────┘
           │
           ▼
 ┌─────────────────────┐
-│  Schema Loader       │  SQLAlchemy inspect → table names, column types
-│                     │  Loads sample rows for few-shot context
-│                     │  Smart keyword matching: only loads relevant tables
+│  Summary Engine      │  LLM + Pydantic structured output → ClinicalSummary
+│                     │  Extracts: patient name, abnormal/normal labs,
+│                     │  risk level (LOW/MODERATE/HIGH), key findings
 └─────────┬───────────┘
           │
           ▼
 ┌─────────────────────┐
-│  Prompt Builder      │  Dialect-aware prompt (PostgreSQL/MySQL/SQLite/MSSQL)
-│                     │  Few-shot examples + schema context + safety rules
-│                     │  Supports follow-up queries via last_sql context
+│  Medical Chunker     │  Custom line-aware splitter (not naive sentence-window)
+│                     │  Keeps lab result rows intact across chunk boundaries
+│                     │  Falls back to RecursiveCharacterTextSplitter for long lines
 └─────────┬───────────┘
           │
           ▼
 ┌─────────────────────┐
-│  SQL Generator       │  Groq LLM with system-level safety prompt
-│                     │  Read-only enforcement: blocks INSERT/UPDATE/DELETE/DROP
-│                     │  Returns UNABLE_TO_ANSWER for out-of-scope questions
+│  Contextualizer      │  LLM enriches each chunk with a 1-2 sentence context
+│                     │  using the global patient summary — so retrieval hits
+│                     │  are meaningful even when the raw chunk is just numbers
 └─────────┬───────────┘
           │
           ▼
 ┌─────────────────────┐
-│  Validation Layer    │  Checks generated table names against actual schema
-│                     │  Auto-enforces LIMIT (dialect-aware: LIMIT vs TOP)
-│                     │  Catches hallucinated table/column names before execution
+│  Vector Store        │  FAISS index with HuggingFace embeddings
+│                     │  (sentence-transformers/all-MiniLM-L6-v2)
+│                     │  Embeds enriched text (context + raw chunk)
+│                     │  Persists to disk for session reuse
 └─────────┬───────────┘
           │
           ▼
 ┌─────────────────────┐
-│  Retry Engine        │  If query fails → sends error + original question
-│                     │  back to LLM for self-correction
-│                     │  Up to N retries with full error context
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│  Response Generator  │  Converts raw SQL results into natural language
-│                     │  "There are 12 customers who placed orders over $500"
+│  Chat Engine         │  Session-based conversational Q&A
+│                     │  Retrieves top-5 chunks per question
+│                     │  Maintains last 4 interactions for context
+│                     │  Guardrails: no diagnosis, no treatment advice
 └─────────────────────┘
 ```
 
 ## Key Design Decisions
 
-**Why validate SQL against the schema before executing?**
+**Why custom chunking instead of LangChain's default splitters?**
 
-LLMs hallucinate table and column names. The `validate_sql_against_schema` function uses SQLAlchemy's `inspect` to extract real table names from the database, then checks every `FROM` and `JOIN` target in the generated SQL. Hallucinated tables get caught before they hit the database, saving a round-trip and producing a better error message for the retry prompt.
+Medical reports have a specific structure: lab results are typically one value per line (`Hemoglobin  14.2 g/dL  12.0-16.0`). Naive sentence-window chunking splits these mid-row, which corrupts the data during retrieval. `MedicalChunker` splits on line breaks first to keep lab rows intact, only falling back to `RecursiveCharacterTextSplitter` when a single line exceeds the chunk size.
 
-**Why dialect-aware prompting?**
+**Why contextualize chunks before embedding?**
 
-SQL isn't universal — `LIMIT 50` works in PostgreSQL but SQL Server needs `SELECT TOP 50`. The prompt builder injects dialect-specific rules (type casting syntax, pagination, identifier quoting) so the LLM generates syntactically correct SQL for whichever database is connected. Switching databases requires changing one config value, not rewriting prompts.
+A raw chunk like `"14.2 g/dL  12.0-16.0  NORMAL"` is meaningless without context. The `Contextualizer` uses the global patient summary to generate a semantic label for each chunk (e.g., *"Complete Blood Count results for the patient, showing Hemoglobin levels"*). This label is prepended to the raw text before embedding, which dramatically improves retrieval relevance.
 
-**Why ambiguity detection before query generation?**
+**Why Pydantic structured output for the summary?**
 
-Vague questions like *"show me the best products"* produce arbitrary SQL (best by revenue? by rating? by quantity sold?). The `detect_ambiguity` function asks the LLM to evaluate the question first. If it's ambiguous, the system returns a clarifying question instead of guessing — which saves LLM tokens and avoids misleading results.
-
-**Why retry with error context instead of just failing?**
-
-First-attempt SQL often has minor syntax errors or wrong joins. Instead of returning an error to the user, the retry engine sends the failed SQL + the exact database error message + the original question back to the LLM, which is usually enough context for self-correction. This handles ~80% of first-attempt failures transparently.
-
-**Safety model:**
-- System prompt enforces read-only mode at the LLM level
-- Regex-based write query detection as a second layer
-- Automatic `LIMIT` enforcement prevents unbounded result sets
-- Schema validation catches hallucinated table names
+The `SummaryEngine` uses LangChain's `.with_structured_output(ClinicalSummary)` to force the LLM into a typed schema: `LabResult` objects with `test_name`, `value`, `unit`, `reference_range`, and `status` (HIGH/LOW/NORMAL). This makes the dashboard deterministic — the frontend gets structured JSON, not free-text that needs parsing.
 
 ## API
 
 ```
-POST /api/query    — Send a question, get SQL + results + natural language answer
-GET  /api/health   — Health check
+POST /upload     — Upload a PDF, returns structured dashboard JSON + builds vector index
+POST /chat       — Send a question with session_id, returns context-aware answer
+GET  /           — Serves the frontend
 ```
 
 ## Setup
 
 ```bash
 # Clone and install
-git clone https://github.com/chaitanya8008/text-to-SQL.git
-cd text-to-SQL
+git clone https://github.com/chaitanya8008/medi-simple.git
+cd medi-simple
 pip install -r requirements.txt
 
 # Configure environment
-GROQ_API_KEY=your_groq_api_key
-DATABASE_URL=your_database_connection_string
+cp .env.example .env
+# Add your GROQ_API_KEY and HUGGINGFACEHUB_API_TOKEN
 
-# Run backend
+# Run
 uvicorn backend.main:app --reload
-
-# Run frontend (separate terminal)
-streamlit run frontend/app.py
 ```
 
 ## Project Structure
 
 ```
-text-to-sql/
+medi-simple/
 ├── backend/
-│   ├── api/
-│   │   └── routes.py          # FastAPI endpoint with full query pipeline
-│   ├── core/
-│   │   └── config.py          # DB config, few-shot examples, settings
-│   ├── db/
-│   │   ├── database.py        # Async query execution, retry logic, validation
-│   │   └── schema_loader.py   # SQLAlchemy inspect, smart table filtering
-│   ├── llm/
-│   │   ├── groq_client.py     # SQL generation, NL response, ambiguity detection
-│   │   └── prompt_builder.py  # Dialect-aware prompt construction
-│   ├── utils/
-│   │   └── debug_logger.py    # Query debug logging
-│   └── main.py
-├── frontend/
-│   └── app.py                 # Streamlit chat interface
-├── sample_db/
-│   ├── create_db.py
-│   └── add_complex_table.py
+│   ├── main.py              # FastAPI app, upload + chat endpoints
+│   ├── pdf_processor.py     # PyMuPDF text extraction with page markers
+│   ├── summary_engine.py    # LLM → Pydantic ClinicalSummary
+│   ├── contextualizer.py    # MedicalChunker + LLM chunk enrichment
+│   ├── vector_store.py      # FAISS build/save/load with HF embeddings
+│   ├── chat_engine.py       # Session-based RAG Q&A with guardrails
+│   └── schemas.py           # Pydantic models (ClinicalSummary, LabResult)
+├── public/
+│   └── index.html           # Frontend
+├── .env.example
 ├── requirements.txt
 └── README.md
 ```
